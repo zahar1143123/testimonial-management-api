@@ -355,3 +355,72 @@ module.exports = {
   deleteTestimonial,
   shareTestimonial
 };
+
+const searchTestimonials = async (req, res) => {
+  try {
+    const {
+      q,
+      createdAfter,
+      createdBefore,
+      minRating,
+      maxRating,
+      page = 1,
+      limit = 10,
+      sort = 'createdAt'
+    } = req.query;
+
+    const query = {
+      userId: req.user.userId,
+      isDeleted: false
+    };
+
+    if (q) {
+      query.$or = [
+        { customerName: { $regex: q, $options: 'i' } },
+        { text: { $regex: q, $options: 'i' } }
+      ];
+    }
+
+    if (createdAfter || createdBefore) {
+      query.createdAt = {};
+      if (createdAfter) query.createdAt.$gte = new Date(createdAfter);
+      if (createdBefore) query.createdAt.$lte = new Date(createdBefore);
+    }
+
+    if (minRating || maxRating) {
+      query.rating = {};
+      if (minRating) query.rating.$gte = Number(minRating);
+      if (maxRating) query.rating.$lte = Number(maxRating);
+    }
+
+    // Пагинация
+    const pageNum = parseInt(page, 10) || 1;
+    const limitNum = parseInt(limit, 10) || 10;
+    const skip = (pageNum - 1) * limitNum;
+
+    const total = await Testimonial.countDocuments(query);
+    const testimonials = await Testimonial.find(query)
+      .sort({ [sort]: -1 })
+      .skip(skip)
+      .limit(limitNum);
+
+    return res.status(200).json({
+      code: 200,
+      status: 'success',
+      message: 'Результаты поиска успешно получены',
+      data: testimonials,
+      pagination: {
+        total,
+        page: pageNum,
+        limit: limitNum,
+        pages: Math.ceil(total / limitNum) || 1
+      }
+    });
+  } catch (error) {
+    return res.status(500).json({
+      code: 500,
+      status: 'failure',
+      message: error.message || 'Ошибка при поиске отзывов'
+    });
+  }
+};

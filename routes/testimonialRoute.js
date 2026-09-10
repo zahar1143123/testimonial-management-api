@@ -8,10 +8,21 @@ const {
   updateTestimonial,
   updateStatus,
   deleteTestimonial,
-  shareTestimonial
+  shareTestimonial,
+  getSettings,
+  upsertSettings,
+  getAnalytics,
+  searchTestimonials
 } = require('../controllers/testimonialController');
 
 router.use(protect);
+
+router.route('/settings')
+  .get(getSettings)
+  .post(upsertSettings);
+
+router.get('/analytics', getAnalytics);
+router.get('/search', searchTestimonials);
 
 router.route('/')
   .post(createTestimonial)
