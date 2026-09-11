@@ -1,12 +1,22 @@
 {
   "name": "testimonial-api",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "Production-ready Testimonial Management API built with Node.js, Express, and MongoDB",
+  "main": "app.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node app.js",
+    "dev": "nodemon app.js",
+    "test": "jest --runInBand --detectOpenHandles"
   },
-  "keywords": [],
+  "keywords": [
+    "nodejs",
+    "express",
+    "mongodb",
+    "mongoose",
+    "jwt",
+    "testimonials",
+    "api"
+  ],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
@@ -18,6 +28,12 @@
     "express-rate-limit": "^8.7.0",
     "jsonwebtoken": "^9.0.3",
     "mongoose": "^9.9.5",
-    "uuid": "^14.0.2"
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "mongodb-memory-server": "^10.1.0",
+    "nodemon": "^3.1.0",
+    "supertest": "^7.0.0"
   }
 }

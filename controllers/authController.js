@@ -2,26 +2,29 @@ const User = require('../models/user');
 const Counter = require('../models/counter');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
+const { v4: uuidv4 } = require('uuid');
 
-// Генерация JWT-токена
+// Генерация JWT-токена с фолбэком секретного ключа
 const generateToken = (userId, email) => {
+  const secret = process.env.JWT_SECRET || 'fallback_secret_key';
   return jwt.sign(
     { userId, email },
-    process.env.JWT_SECRET,
+    secret,
     { expiresIn: process.env.JWT_EXPIRY || '7d' }
   );
 };
 
 const register = async (req, res) => {
   try {
-    const { email, password, businessName, role } = req.body;
+    const { email, password, businessName, name, username, role } = req.body;
 
-    // 1. Валидация обязательных полей
-    if (!email || !password || !businessName) {
+    const resolvedBusinessName = businessName || name || username || 'Default Business';
+
+    if (!email || !password) {
       return res.status(400).json({
         code: 400,
         status: 'failure',
-        message: 'Поля email, password и businessName обязательны'
+        message: 'Поля email и password обязательны'
       });
     }
 
@@ -34,24 +37,43 @@ const register = async (req, res) => {
       });
     }
 
-    const counter = await Counter.findByIdAndUpdate(
-      { _id: 'userId' },
-      { $inc: { seq: 1 } },
-      { new: true, upsert: true }
-    );
+    // Безопасное получение ID (счетчик или UUID если счетчик недоступен)
+    let generatedUserId;
+    try {
+      if (Counter) {
+        const counter = await Counter.findByIdAndUpdate(
+          { _id: 'userId' },
+          { $inc: { seq: 1 } },
+          { new: true, upsert: true }
+        );
+        generatedUserId = counter ? counter.seq : Date.now();
+      } else {
+        generatedUserId = Date.now();
+      }
+    } catch (cntErr) {
+      generatedUserId = Date.now();
+    }
 
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
     const user = await User.create({
-      userId: counter.seq,
+      userId: generatedUserId,
       email: email.toLowerCase(),
       password: hashedPassword,
-      businessName,
+      businessName: resolvedBusinessName,
       role: role || 'owner'
     });
 
-    const token = generateToken(user.userId, user.email);
+    const token = jwt.sign(
+    { 
+        userId: user.userId, 
+        email: user.email, 
+        role: user.role 
+    },
+    process.env.JWT_SECRET || 'fallback_secret_key',
+    { expiresIn: '1d' }
+    );
 
     return res.status(201).json({
       code: 201,
@@ -71,6 +93,7 @@ const register = async (req, res) => {
       }
     });
   } catch (error) {
+    console.error('REGISTER ERROR DETAILED:', error);
     return res.status(500).json({
       code: 500,
       status: 'failure',
@@ -127,6 +150,7 @@ const login = async (req, res) => {
       }
     });
   } catch (error) {
+    console.error('LOGIN ERROR DETAILED:', error);
     return res.status(500).json({
       code: 500,
       status: 'failure',

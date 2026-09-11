@@ -1,39 +1,45 @@
-const Testimonial = require('../models/testimonial');
+const { Testimonial } = require('../models/testimonial');
+const TestimonialSettings = require('../models/testimonialSettings');
 const { v4: uuidv4 } = require('uuid');
 const { ALLOWED_STATUS_TRANSITIONS, ALLOWED_SHARE_CHANNELS } = require('../lib/constants');
 
+const getUserIdFromReq = (req) => {
+  return (
+    req.user?.userId ??
+    req.user?.id ??
+    req.user?._id ??
+    req.user?.user?.id ??
+    req.user?.user?.userId
+  );
+};
+
 const createTestimonial = async (req, res) => {
   try {
-    const { customerName, customerEmail, customerPhone, videoUrl, rating, text, consentGiven } = req.body;
+    const rawUserId = getUserIdFromReq(req);
 
-    if (!customerName) {
-      return res.status(400).json({
-        code: 400,
+    if (!rawUserId) {
+      return res.status(401).json({
+        code: 401,
         status: 'failure',
-        message: 'Поле customerName обязательно для заполнения'
+        message: 'Не авторизован: ID пользователя не найден в токене'
       });
     }
 
+    const userId = Number(rawUserId);
+
     const testimonial = await Testimonial.create({
-      testimonialId: uuidv4(),
-      userId: req.user.userId,
-      customerName,
-      customerEmail,
-      customerPhone,
-      videoUrl,
-      rating,
-      text,
-      consentGiven: consentGiven || false,
-      status: 'draft'
+      ...req.body,
+      userId,
+      testimonialId: req.body.testimonialId || uuidv4()
     });
 
     return res.status(201).json({
       code: 201,
       status: 'success',
-      message: 'Отзыв успешно создан',
       data: testimonial
     });
   } catch (error) {
+    console.error('CREATE TESTIMONIAL ERROR:', error);
     return res.status(500).json({
       code: 500,
       status: 'failure',
@@ -44,10 +50,11 @@ const createTestimonial = async (req, res) => {
 
 const getTestimonials = async (req, res) => {
   try {
+    const rawUserId = getUserIdFromReq(req);
     const { status, page = 1, limit = 10, sort = 'createdAt' } = req.query;
 
     const query = {
-      userId: req.user.userId,
+      userId: Number(rawUserId),
       isDeleted: false
     };
 
@@ -88,6 +95,7 @@ const getTestimonials = async (req, res) => {
 
 const getTestimonialById = async (req, res) => {
   try {
+    const currentUserId = Number(getUserIdFromReq(req));
     const testimonial = await Testimonial.findOne({
       testimonialId: req.params.testimonialId,
       isDeleted: false
@@ -101,7 +109,7 @@ const getTestimonialById = async (req, res) => {
       });
     }
 
-    if (testimonial.userId !== req.user.userId) {
+    if (testimonial.userId !== currentUserId) {
       return res.status(403).json({
         code: 403,
         status: 'failure',
@@ -126,6 +134,7 @@ const getTestimonialById = async (req, res) => {
 
 const updateTestimonial = async (req, res) => {
   try {
+    const currentUserId = Number(getUserIdFromReq(req));
     const testimonial = await Testimonial.findOne({
       testimonialId: req.params.testimonialId,
       isDeleted: false
@@ -139,7 +148,7 @@ const updateTestimonial = async (req, res) => {
       });
     }
 
-    if (testimonial.userId !== req.user.userId) {
+    if (testimonial.userId !== currentUserId) {
       return res.status(403).json({
         code: 403,
         status: 'failure',
@@ -171,6 +180,7 @@ const updateTestimonial = async (req, res) => {
 const updateStatus = async (req, res) => {
   try {
     const { status: nextStatus } = req.body;
+    const currentUserId = Number(getUserIdFromReq(req));
 
     if (!nextStatus) {
       return res.status(400).json({
@@ -193,7 +203,7 @@ const updateStatus = async (req, res) => {
       });
     }
 
-    if (testimonial.userId !== req.user.userId) {
+    if (testimonial.userId !== currentUserId) {
       return res.status(403).json({
         code: 403,
         status: 'failure',
@@ -202,14 +212,21 @@ const updateStatus = async (req, res) => {
     }
 
     const currentStatus = testimonial.status;
-    const expectedStatus = ALLOWED_STATUS_TRANSITIONS[currentStatus];
 
-    if (expectedStatus !== nextStatus) {
-      return res.status(400).json({
-        code: 400,
-        status: 'failure',
-        message: `Cannot transition from ${currentStatus} to ${nextStatus}`
-      });
+    // Проверка допустимости перехода по State Machine
+    if (currentStatus !== nextStatus) {
+      const allowed = ALLOWED_STATUS_TRANSITIONS[currentStatus];
+      const isAllowed = Array.isArray(allowed)
+        ? allowed.includes(nextStatus)
+        : allowed === nextStatus;
+
+      if (!isAllowed) {
+        return res.status(400).json({
+          code: 400,
+          status: 'failure',
+          message: `Cannot transition from ${currentStatus} to ${nextStatus}`
+        });
+      }
     }
 
     testimonial.status = nextStatus;
@@ -236,6 +253,7 @@ const updateStatus = async (req, res) => {
 
 const deleteTestimonial = async (req, res) => {
   try {
+    const currentUserId = Number(getUserIdFromReq(req));
     const testimonial = await Testimonial.findOne({
       testimonialId: req.params.testimonialId,
       isDeleted: false
@@ -249,7 +267,7 @@ const deleteTestimonial = async (req, res) => {
       });
     }
 
-    if (testimonial.userId !== req.user.userId) {
+    if (testimonial.userId !== currentUserId) {
       return res.status(403).json({
         code: 403,
         status: 'failure',
@@ -279,6 +297,7 @@ const deleteTestimonial = async (req, res) => {
 const shareTestimonial = async (req, res) => {
   try {
     const { channels } = req.body;
+    const currentUserId = Number(getUserIdFromReq(req));
 
     if (!channels || !Array.isArray(channels) || channels.length === 0) {
       return res.status(400).json({
@@ -288,7 +307,9 @@ const shareTestimonial = async (req, res) => {
       });
     }
 
-    const invalidChannels = channels.filter(ch => !ALLOWED_SHARE_CHANNELS.includes(ch));
+    const invalidChannels = channels.filter(
+      (ch) => !ALLOWED_SHARE_CHANNELS.includes(ch)
+    );
     if (invalidChannels.length > 0) {
       return res.status(400).json({
         code: 400,
@@ -310,7 +331,7 @@ const shareTestimonial = async (req, res) => {
       });
     }
 
-    if (testimonial.userId !== req.user.userId) {
+    if (testimonial.userId !== currentUserId) {
       return res.status(403).json({
         code: 403,
         status: 'failure',
@@ -318,7 +339,9 @@ const shareTestimonial = async (req, res) => {
       });
     }
 
-    const updatedChannels = Array.from(new Set([...(testimonial.sharedChannels || []), ...channels]));
+    const updatedChannels = Array.from(
+      new Set([...(testimonial.sharedChannels || []), ...channels])
+    );
     testimonial.sharedChannels = updatedChannels;
 
     if (testimonial.status === 'completed') {
@@ -346,18 +369,130 @@ const shareTestimonial = async (req, res) => {
   }
 };
 
-module.exports = {
-  createTestimonial,
-  getTestimonials,
-  getTestimonialById,
-  updateTestimonial,
-  updateStatus,
-  deleteTestimonial,
-  shareTestimonial
+const getSettings = async (req, res) => {
+  try {
+    const userId = Number(getUserIdFromReq(req));
+    const settings = await TestimonialSettings.findOne({ userId });
+
+    return res.status(200).json({
+      code: 200,
+      status: 'success',
+      message: 'Настройки успешно получены',
+      data: settings || null
+    });
+  } catch (error) {
+    return res.status(500).json({
+      code: 500,
+      status: 'failure',
+      message: error.message || 'Ошибка при получении настроек'
+    });
+  }
+};
+
+const upsertSettings = async (req, res) => {
+  try {
+    const userId = Number(getUserIdFromReq(req));
+    const settings = await TestimonialSettings.findOneAndUpdate(
+      { userId },
+      { $set: { ...req.body, userId } },
+      { new: true, upsert: true, runValidators: true }
+    );
+
+    return res.status(200).json({
+      code: 200,
+      status: 'success',
+      message: 'Настройки успешно сохранены',
+      data: settings
+    });
+  } catch (error) {
+    return res.status(500).json({
+      code: 500,
+      status: 'failure',
+      message: error.message || 'Ошибка при сохранении настроек'
+    });
+  }
+};
+
+const getAnalytics = async (req, res) => {
+  try {
+    const userId = Number(getUserIdFromReq(req));
+    const { startDate, endDate } = req.query;
+
+    const matchStage = {
+      userId,
+      isDeleted: false
+    };
+
+    if (startDate || endDate) {
+      matchStage.createdAt = {};
+      if (startDate) matchStage.createdAt.$gte = new Date(startDate);
+      if (endDate) matchStage.createdAt.$lte = new Date(endDate);
+    }
+
+    const stats = await Testimonial.aggregate([
+      { $match: matchStage },
+      {
+        $group: {
+          _id: '$status',
+          count: { $sum: 1 }
+        }
+      }
+    ]);
+
+    const total = await Testimonial.countDocuments(matchStage);
+
+    const overallRatingResult = await Testimonial.aggregate([
+      { $match: { ...matchStage, rating: { $exists: true, $ne: null } } },
+      { $group: { _id: null, averageRating: { $avg: '$rating' } } }
+    ]);
+
+    const averageRating =
+      overallRatingResult.length > 0
+        ? Number(overallRatingResult[0].averageRating.toFixed(1))
+        : 0;
+
+    const byStatus = {
+      draft: 0,
+      recording: 0,
+      processing: 0,
+      completed: 0,
+      shared: 0
+    };
+
+    stats.forEach((item) => {
+      if (Object.prototype.hasOwnProperty.call(byStatus, item._id)) {
+        byStatus[item._id] = item.count;
+      }
+    });
+
+    return res.status(200).json({
+      code: 200,
+      status: 'success',
+      message: 'Аналитика успешно получена',
+      data: {
+        overview: {
+          total,
+          byStatus,
+          averageRating
+        },
+        period: {
+          startDate: startDate || null,
+          endDate: endDate || null
+        }
+      }
+    });
+  } catch (error) {
+    return res.status(500).json({
+      code: 500,
+      status: 'failure',
+      message: error.message || 'Ошибка при получении аналитики'
+    });
+  }
 };
 
 const searchTestimonials = async (req, res) => {
   try {
+    const userId = Number(getUserIdFromReq(req));
     const {
       q,
       createdAfter,
@@ -370,7 +505,7 @@ const searchTestimonials = async (req, res) => {
     } = req.query;
 
     const query = {
-      userId: req.user.userId,
+      userId,
       isDeleted: false
     };
 
@@ -393,7 +528,6 @@ const searchTestimonials = async (req, res) => {
       if (maxRating) query.rating.$lte = Number(maxRating);
     }
 
-    // Пагинация
     const pageNum = parseInt(page, 10) || 1;
     const limitNum = parseInt(limit, 10) || 10;
     const skip = (pageNum - 1) * limitNum;
@@ -423,4 +557,18 @@ const searchTestimonials = async (req, res) => {
       message: error.message || 'Ошибка при поиске отзывов'
     });
   }
+};
+
+module.exports = {
+  createTestimonial,
+  getTestimonials,
+  getTestimonialById,
+  updateTestimonial,
+  updateStatus,
+  deleteTestimonial,
+  shareTestimonial,
+  getSettings,
+  upsertSettings,
+  getAnalytics,
+  searchTestimonials
 };
