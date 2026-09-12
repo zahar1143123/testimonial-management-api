@@ -3,15 +3,23 @@ const TestimonialSettings = require('../models/testimonialSettings');
 const { v4: uuidv4 } = require('uuid');
 const { ALLOWED_STATUS_TRANSITIONS, ALLOWED_SHARE_CHANNELS } = require('../lib/constants');
 
-const getUserIdFromReq = (req) => {
-  return (
-    req.user?.userId ??
-    req.user?.id ??
-    req.user?._id ??
-    req.user?.user?.id ??
-    req.user?.user?.userId
-  );
-};
+const getUserIdFromReq = (req) => req.user?.userId;
+
+const ALLOWED_WRITE_FIELDS = [
+  'customerName',
+  'customerEmail',
+  'customerPhone',
+  'videoUrl',
+  'rating',
+  'text',
+  'consentGiven'
+];
+
+const pickAllowedFields = (body = {}) =>
+  ALLOWED_WRITE_FIELDS.reduce((acc, key) => {
+    if (body[key] !== undefined) acc[key] = body[key];
+    return acc;
+  }, {});
 
 const createTestimonial = async (req, res) => {
   try {
@@ -28,9 +36,9 @@ const createTestimonial = async (req, res) => {
     const userId = Number(rawUserId);
 
     const testimonial = await Testimonial.create({
-      ...req.body,
+      ...pickAllowedFields(req.body),
       userId,
-      testimonialId: req.body.testimonialId || uuidv4()
+      testimonialId: uuidv4()
     });
 
     return res.status(201).json({
@@ -39,7 +47,7 @@ const createTestimonial = async (req, res) => {
       data: testimonial
     });
   } catch (error) {
-    console.error('CREATE TESTIMONIAL ERROR:', error);
+    console.error('Create testimonial error:', error.message);
     return res.status(500).json({
       code: 500,
       status: 'failure',
@@ -158,7 +166,7 @@ const updateTestimonial = async (req, res) => {
 
     const updated = await Testimonial.findOneAndUpdate(
       { testimonialId: req.params.testimonialId },
-      { $set: req.body },
+      { $set: pickAllowedFields(req.body) },
       { new: true, runValidators: true }
     );
 

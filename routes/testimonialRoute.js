@@ -5,7 +5,13 @@ const {
   getTestimonials,
   getTestimonialById,
   updateTestimonial,
-  updateStatus
+  updateStatus,
+  deleteTestimonial,
+  shareTestimonial,
+  getSettings,
+  upsertSettings,
+  getAnalytics,
+  searchTestimonials
 } = require('../controllers/testimonialController');
 const { protect } = require('../middleware/auth');
 
@@ -15,10 +21,19 @@ router.route('/')
   .post(createTestimonial)
   .get(getTestimonials);
 
+router.route('/settings')
+  .get(getSettings)
+  .post(upsertSettings);
+
+router.get('/analytics', getAnalytics);
+router.get('/search', searchTestimonials);
+
 router.route('/:testimonialId')
   .get(getTestimonialById)
-  .patch(updateTestimonial);
+  .put(updateTestimonial)
+  .delete(deleteTestimonial);
 
 router.patch('/:testimonialId/status', updateStatus);
+router.post('/:testimonialId/share', shareTestimonial);
 
 module.exports = router;

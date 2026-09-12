@@ -1,8 +1,6 @@
 const User = require('../models/user');
-const Counter = require('../models/counter');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
-const { v4: uuidv4 } = require('uuid');
 
 // Генерация JWT-токена с фолбэком секретного ключа
 const generateToken = (userId, email) => {
@@ -16,15 +14,13 @@ const generateToken = (userId, email) => {
 
 const register = async (req, res) => {
   try {
-    const { email, password, businessName, name, username, role } = req.body;
+    const { email, password, businessName, role } = req.body;
 
-    const resolvedBusinessName = businessName || name || username || 'Default Business';
-
-    if (!email || !password) {
+    if (!email || !password || !businessName) {
       return res.status(400).json({
         code: 400,
         status: 'failure',
-        message: 'Поля email и password обязательны'
+        message: 'Поля email, password и businessName обязательны'
       });
     }
 
@@ -37,31 +33,13 @@ const register = async (req, res) => {
       });
     }
 
-    // Безопасное получение ID (счетчик или UUID если счетчик недоступен)
-    let generatedUserId;
-    try {
-      if (Counter) {
-        const counter = await Counter.findByIdAndUpdate(
-          { _id: 'userId' },
-          { $inc: { seq: 1 } },
-          { new: true, upsert: true }
-        );
-        generatedUserId = counter ? counter.seq : Date.now();
-      } else {
-        generatedUserId = Date.now();
-      }
-    } catch (cntErr) {
-      generatedUserId = Date.now();
-    }
-
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
     const user = await User.create({
-      userId: generatedUserId,
       email: email.toLowerCase(),
       password: hashedPassword,
-      businessName: resolvedBusinessName,
+      businessName,
       role: role || 'owner'
     });
 
@@ -93,7 +71,7 @@ const register = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('REGISTER ERROR DETAILED:', error);
+    console.error('Register error:', error.message);
     return res.status(500).json({
       code: 500,
       status: 'failure',
@@ -150,7 +128,7 @@ const login = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('LOGIN ERROR DETAILED:', error);
+    console.error('Login error:', error.message);
     return res.status(500).json({
       code: 500,
       status: 'failure',
