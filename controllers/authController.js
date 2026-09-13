@@ -3,10 +3,10 @@ const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 
 // Генерация JWT-токена с фолбэком секретного ключа
-const generateToken = (userId, email) => {
+const generateToken = (userId, email, role) => {
   const secret = process.env.JWT_SECRET || 'fallback_secret_key';
   return jwt.sign(
-    { userId, email },
+    { userId, email, role },
     secret,
     { expiresIn: process.env.JWT_EXPIRY || '7d' }
   );
@@ -43,15 +43,7 @@ const register = async (req, res) => {
       role: role || 'owner'
     });
 
-    const token = jwt.sign(
-    { 
-        userId: user.userId, 
-        email: user.email, 
-        role: user.role 
-    },
-    process.env.JWT_SECRET || 'fallback_secret_key',
-    { expiresIn: '1d' }
-    );
+    const token = generateToken(user.userId, user.email, user.role);
 
     return res.status(201).json({
       code: 201,
@@ -110,7 +102,7 @@ const login = async (req, res) => {
       });
     }
 
-    const token = generateToken(user.userId, user.email);
+    const token = generateToken(user.userId, user.email, user.role);
 
     return res.status(200).json({
       code: 200,

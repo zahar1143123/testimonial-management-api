@@ -347,6 +347,16 @@ const shareTestimonial = async (req, res) => {
       });
     }
 
+    // Шарить можно только готовый отзыв — иначе клиент мог бы разослать
+    // клиенту ссылку на ещё не записанный/не обработанный черновик
+    if (!['completed', 'shared'].includes(testimonial.status)) {
+      return res.status(400).json({
+        code: 400,
+        status: 'failure',
+        message: `Нельзя поделиться отзывом в статусе "${testimonial.status}" — сначала переведите его в "completed"`
+      });
+    }
+
     const updatedChannels = Array.from(
       new Set([...(testimonial.sharedChannels || []), ...channels])
     );
