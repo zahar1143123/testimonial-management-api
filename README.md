@@ -6,7 +6,7 @@ REST API для сбора и управления пользовательск�
 
 ## Технологический стек
 
-- **Node.js**, **Express 5** — сервер и роутинг
+- **Node.js >= 20.19** (требование mongoose 9.x), **Express 5** — сервер и роутинг
 - **MongoDB**, **Mongoose** — база данных и модели
 - **JWT (jsonwebtoken)** — аутентификация
 - **bcrypt** — хеширование паролей
@@ -27,7 +27,7 @@ REST API для сбора и управления пользовательск�
 - **Настройки** формы сбора отзывов на пользователя (`TestimonialSettings`)
 - **Аналитика** — количество отзывов по статусам и средний рейтинг
 
-### Выполненные бонусы
+### Реализованные бонусы
 -  Rate limiting на `/api/auth/register` и `/api/auth/login`
 -  Поиск отзывов (`/api/testimonials/search`) — по тексту, диапазону дат, диапазону рейтинга
 -  Тесты (auth, auth middleware, создание отзыва, переходы статуса)
@@ -37,7 +37,7 @@ REST API для сбора и управления пользовательск�
 ## Установка и запуск
 
 ```bash
-git clone <URL_ВАШЕГО_РЕПОЗИТОРИЯ>
+git clone https://github.com/zahar1143123/testimonial-management-api.git
 cd testimonial-api
 npm install
 ```

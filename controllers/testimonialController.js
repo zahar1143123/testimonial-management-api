@@ -1,4 +1,4 @@
-const { Testimonial } = require('../models/testimonial');
+const { Testimonial, TESTIMONIAL_STATUSES } = require('../models/testimonial');
 const TestimonialSettings = require('../models/testimonialSettings');
 const { v4: uuidv4 } = require('uuid');
 const { ALLOWED_STATUS_TRANSITIONS, ALLOWED_SHARE_CHANNELS } = require('../lib/constants');
@@ -21,7 +21,65 @@ const pickAllowedFields = (body = {}) =>
     return acc;
   }, {});
 
-const createTestimonial = async (req, res) => {
+const SETTINGS_WRITE_FIELDS = [
+  'isEnabled',
+  'defaultVideoLength',
+  'videoLengthOptions',
+  'questionnaire',
+  'sendingOptions',
+  'thankYouMessage',
+  'contactConsent'
+];
+
+const pickSettingsFields = (body = {}) =>
+  SETTINGS_WRITE_FIELDS.reduce((acc, key) => {
+    if (body[key] !== undefined) acc[key] = body[key];
+    return acc;
+  }, {});
+
+const SORT_FIELDS = ['createdAt', 'updatedAt', 'rating', 'customerName'];
+const MAX_LIMIT = 100;
+
+// Общая валидация page/limit/status/sort для списков и поиска.
+// Возвращает { error: 'сообщение' } либо { pageNum, limitNum, sort }.
+const parseListQuery = ({ page = 1, limit = 10, sort = 'createdAt', status }) => {
+  const pageNum = Number(page);
+  const limitNum = Number(limit);
+
+  if (!Number.isInteger(pageNum) || pageNum < 1) {
+    return { error: 'page должен быть целым числом >= 1' };
+  }
+  if (!Number.isInteger(limitNum) || limitNum < 1 || limitNum > MAX_LIMIT) {
+    return { error: `limit должен быть целым числом от 1 до ${MAX_LIMIT}` };
+  }
+  if (!SORT_FIELDS.includes(sort)) {
+    return { error: `sort должен быть одним из: ${SORT_FIELDS.join(', ')}` };
+  }
+  if (status !== undefined && !TESTIMONIAL_STATUSES.includes(status)) {
+    return { error: `status должен быть одним из: ${TESTIMONIAL_STATUSES.join(', ')}` };
+  }
+
+  return { pageNum, limitNum, sort };
+};
+
+// Дата-only строка вида "2025-12-31" трактуется JS как начало дня (00:00:00 UTC).
+// Для конца периода это обрезает весь последний день — нормализуем явно.
+const toEndOfDayIfDateOnly = (value) =>
+  /^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T23:59:59.999Z` : value;
+
+const parseDateParam = (value, { endOfDay = false } = {}) => {
+  if (value === undefined) return { value: undefined };
+  const normalized = endOfDay ? toEndOfDayIfDateOnly(value) : value;
+  const date = new Date(normalized);
+  if (Number.isNaN(date.getTime())) {
+    return { error: `Некорректная дата: ${value}` };
+  }
+  return { value: date };
+};
+
+const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const createTestimonial = async (req, res, next) => {
   try {
     const rawUserId = getUserIdFromReq(req);
 
@@ -44,22 +102,24 @@ const createTestimonial = async (req, res) => {
     return res.status(201).json({
       code: 201,
       status: 'success',
+      message: 'Отзыв успешно создан',
       data: testimonial
     });
   } catch (error) {
-    console.error('Create testimonial error:', error.message);
-    return res.status(500).json({
-      code: 500,
-      status: 'failure',
-      message: error.message || 'Ошибка при создании отзыва'
-    });
+    return next(error);
   }
 };
 
-const getTestimonials = async (req, res) => {
+const getTestimonials = async (req, res, next) => {
   try {
     const rawUserId = getUserIdFromReq(req);
-    const { status, page = 1, limit = 10, sort = 'createdAt' } = req.query;
+    const { status } = req.query;
+
+    const parsed = parseListQuery(req.query);
+    if (parsed.error) {
+      return res.status(400).json({ code: 400, status: 'failure', message: parsed.error });
+    }
+    const { pageNum, limitNum, sort } = parsed;
 
     const query = {
       userId: Number(rawUserId),
@@ -70,8 +130,6 @@ const getTestimonials = async (req, res) => {
       query.status = status;
     }
 
-    const pageNum = parseInt(page, 10) || 1;
-    const limitNum = parseInt(limit, 10) || 10;
     const skip = (pageNum - 1) * limitNum;
 
     const total = await Testimonial.countDocuments(query);
@@ -93,15 +151,11 @@ const getTestimonials = async (req, res) => {
       }
     });
   } catch (error) {
-    return res.status(500).json({
-      code: 500,
-      status: 'failure',
-      message: error.message || 'Ошибка при получении отзывов'
-    });
+    return next(error);
   }
 };
 
-const getTestimonialById = async (req, res) => {
+const getTestimonialById = async (req, res, next) => {
   try {
     const currentUserId = Number(getUserIdFromReq(req));
     const testimonial = await Testimonial.findOne({
@@ -132,15 +186,11 @@ const getTestimonialById = async (req, res) => {
       data: testimonial
     });
   } catch (error) {
-    return res.status(500).json({
-      code: 500,
-      status: 'failure',
-      message: error.message || 'Ошибка при получении отзыва'
-    });
+    return next(error);
   }
 };
 
-const updateTestimonial = async (req, res) => {
+const updateTestimonial = async (req, res, next) => {
   try {
     const currentUserId = Number(getUserIdFromReq(req));
     const testimonial = await Testimonial.findOne({
@@ -177,15 +227,11 @@ const updateTestimonial = async (req, res) => {
       data: updated
     });
   } catch (error) {
-    return res.status(500).json({
-      code: 500,
-      status: 'failure',
-      message: error.message || 'Ошибка при обновлении отзыва'
-    });
+    return next(error);
   }
 };
 
-const updateStatus = async (req, res) => {
+const updateStatus = async (req, res, next) => {
   try {
     const { status: nextStatus } = req.body;
     const currentUserId = Number(getUserIdFromReq(req));
@@ -221,20 +267,21 @@ const updateStatus = async (req, res) => {
 
     const currentStatus = testimonial.status;
 
-    // Проверка допустимости перехода по State Machine
-    if (currentStatus !== nextStatus) {
-      const allowed = ALLOWED_STATUS_TRANSITIONS[currentStatus];
-      const isAllowed = Array.isArray(allowed)
-        ? allowed.includes(nextStatus)
-        : allowed === nextStatus;
+    // Проверка допустимости перехода по State Machine.
+    // Важно: same-state переход (например draft -> draft) НЕ считается
+    // допустимым просто потому что "ничего не меняется" — ТЗ описывает
+    // строго определённую цепочку переходов, и same-state в неё не входит.
+    const allowedNextStatus = ALLOWED_STATUS_TRANSITIONS[currentStatus];
+    const isAllowed = Array.isArray(allowedNextStatus)
+      ? allowedNextStatus.includes(nextStatus)
+      : allowedNextStatus === nextStatus;
 
-      if (!isAllowed) {
-        return res.status(400).json({
-          code: 400,
-          status: 'failure',
-          message: `Cannot transition from ${currentStatus} to ${nextStatus}`
-        });
-      }
+    if (!isAllowed) {
+      return res.status(400).json({
+        code: 400,
+        status: 'failure',
+        message: `Cannot transition from ${currentStatus} to ${nextStatus}`
+      });
     }
 
     testimonial.status = nextStatus;
@@ -251,15 +298,11 @@ const updateStatus = async (req, res) => {
       data: testimonial
     });
   } catch (error) {
-    return res.status(500).json({
-      code: 500,
-      status: 'failure',
-      message: error.message || 'Ошибка при обновлении статуса'
-    });
+    return next(error);
   }
 };
 
-const deleteTestimonial = async (req, res) => {
+const deleteTestimonial = async (req, res, next) => {
   try {
     const currentUserId = Number(getUserIdFromReq(req));
     const testimonial = await Testimonial.findOne({
@@ -294,15 +337,11 @@ const deleteTestimonial = async (req, res) => {
       data: {}
     });
   } catch (error) {
-    return res.status(500).json({
-      code: 500,
-      status: 'failure',
-      message: error.message || 'Ошибка при удалении отзыва'
-    });
+    return next(error);
   }
 };
 
-const shareTestimonial = async (req, res) => {
+const shareTestimonial = async (req, res, next) => {
   try {
     const { channels } = req.body;
     const currentUserId = Number(getUserIdFromReq(req));
@@ -379,15 +418,11 @@ const shareTestimonial = async (req, res) => {
       data: testimonial
     });
   } catch (error) {
-    return res.status(500).json({
-      code: 500,
-      status: 'failure',
-      message: error.message || 'Ошибка при шаринге отзыва'
-    });
+    return next(error);
   }
 };
 
-const getSettings = async (req, res) => {
+const getSettings = async (req, res, next) => {
   try {
     const userId = Number(getUserIdFromReq(req));
     const settings = await TestimonialSettings.findOne({ userId });
@@ -399,20 +434,16 @@ const getSettings = async (req, res) => {
       data: settings || null
     });
   } catch (error) {
-    return res.status(500).json({
-      code: 500,
-      status: 'failure',
-      message: error.message || 'Ошибка при получении настроек'
-    });
+    return next(error);
   }
 };
 
-const upsertSettings = async (req, res) => {
+const upsertSettings = async (req, res, next) => {
   try {
     const userId = Number(getUserIdFromReq(req));
     const settings = await TestimonialSettings.findOneAndUpdate(
       { userId },
-      { $set: { ...req.body, userId } },
+      { $set: { ...pickSettingsFields(req.body), userId } },
       { new: true, upsert: true, runValidators: true }
     );
 
@@ -423,28 +454,40 @@ const upsertSettings = async (req, res) => {
       data: settings
     });
   } catch (error) {
-    return res.status(500).json({
-      code: 500,
-      status: 'failure',
-      message: error.message || 'Ошибка при сохранении настроек'
-    });
+    return next(error);
   }
 };
 
-const getAnalytics = async (req, res) => {
+const getAnalytics = async (req, res, next) => {
   try {
     const userId = Number(getUserIdFromReq(req));
     const { startDate, endDate } = req.query;
+
+    const start = parseDateParam(startDate);
+    if (start.error) {
+      return res.status(400).json({ code: 400, status: 'failure', message: start.error });
+    }
+    const end = parseDateParam(endDate, { endOfDay: true });
+    if (end.error) {
+      return res.status(400).json({ code: 400, status: 'failure', message: end.error });
+    }
+    if (start.value && end.value && start.value > end.value) {
+      return res.status(400).json({
+        code: 400,
+        status: 'failure',
+        message: 'startDate не может быть позже endDate'
+      });
+    }
 
     const matchStage = {
       userId,
       isDeleted: false
     };
 
-    if (startDate || endDate) {
+    if (start.value || end.value) {
       matchStage.createdAt = {};
-      if (startDate) matchStage.createdAt.$gte = new Date(startDate);
-      if (endDate) matchStage.createdAt.$lte = new Date(endDate);
+      if (start.value) matchStage.createdAt.$gte = start.value;
+      if (end.value) matchStage.createdAt.$lte = end.value;
     }
 
     const stats = await Testimonial.aggregate([
@@ -494,33 +537,52 @@ const getAnalytics = async (req, res) => {
           averageRating
         },
         period: {
-          startDate: startDate || null,
-          endDate: endDate || null
+          startDate: start.value ? start.value.toISOString() : null,
+          endDate: end.value ? end.value.toISOString() : null
         }
       }
     });
   } catch (error) {
-    return res.status(500).json({
-      code: 500,
-      status: 'failure',
-      message: error.message || 'Ошибка при получении аналитики'
-    });
+    return next(error);
   }
 };
 
-const searchTestimonials = async (req, res) => {
+const MAX_SEARCH_QUERY_LENGTH = 200;
+
+const searchTestimonials = async (req, res, next) => {
   try {
     const userId = Number(getUserIdFromReq(req));
-    const {
-      q,
-      createdAfter,
-      createdBefore,
-      minRating,
-      maxRating,
-      page = 1,
-      limit = 10,
-      sort = 'createdAt'
-    } = req.query;
+    const { q, createdAfter, createdBefore, minRating, maxRating } = req.query;
+
+    const parsed = parseListQuery(req.query);
+    if (parsed.error) {
+      return res.status(400).json({ code: 400, status: 'failure', message: parsed.error });
+    }
+    const { pageNum, limitNum, sort } = parsed;
+
+    if (q && q.length > MAX_SEARCH_QUERY_LENGTH) {
+      return res.status(400).json({
+        code: 400,
+        status: 'failure',
+        message: `q не должен превышать ${MAX_SEARCH_QUERY_LENGTH} символов`
+      });
+    }
+
+    const after = parseDateParam(createdAfter);
+    if (after.error) {
+      return res.status(400).json({ code: 400, status: 'failure', message: after.error });
+    }
+    const before = parseDateParam(createdBefore, { endOfDay: true });
+    if (before.error) {
+      return res.status(400).json({ code: 400, status: 'failure', message: before.error });
+    }
+    if (after.value && before.value && after.value > before.value) {
+      return res.status(400).json({
+        code: 400,
+        status: 'failure',
+        message: 'createdAfter не может быть позже createdBefore'
+      });
+    }
 
     const query = {
       userId,
@@ -528,16 +590,19 @@ const searchTestimonials = async (req, res) => {
     };
 
     if (q) {
+      // Экранируем спецсимволы, чтобы пользовательский текст нельзя было
+      // использовать как произвольное regex-выражение
+      const safe = escapeRegex(q);
       query.$or = [
-        { customerName: { $regex: q, $options: 'i' } },
-        { text: { $regex: q, $options: 'i' } }
+        { customerName: { $regex: safe, $options: 'i' } },
+        { text: { $regex: safe, $options: 'i' } }
       ];
     }
 
-    if (createdAfter || createdBefore) {
+    if (after.value || before.value) {
       query.createdAt = {};
-      if (createdAfter) query.createdAt.$gte = new Date(createdAfter);
-      if (createdBefore) query.createdAt.$lte = new Date(createdBefore);
+      if (after.value) query.createdAt.$gte = after.value;
+      if (before.value) query.createdAt.$lte = before.value;
     }
 
     if (minRating || maxRating) {
@@ -546,8 +611,6 @@ const searchTestimonials = async (req, res) => {
       if (maxRating) query.rating.$lte = Number(maxRating);
     }
 
-    const pageNum = parseInt(page, 10) || 1;
-    const limitNum = parseInt(limit, 10) || 10;
     const skip = (pageNum - 1) * limitNum;
 
     const total = await Testimonial.countDocuments(query);
@@ -569,11 +632,7 @@ const searchTestimonials = async (req, res) => {
       }
     });
   } catch (error) {
-    return res.status(500).json({
-      code: 500,
-      status: 'failure',
-      message: error.message || 'Ошибка при поиске отзывов'
-    });
+    return next(error);
   }
 };
 

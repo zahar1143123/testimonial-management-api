@@ -34,6 +34,10 @@ const testimonialSchema = new mongoose.Schema(
       default: '',
       trim: true,
       lowercase: true,
+      validate: {
+        validator: (v) => v === '' || /^\S+@\S+\.\S+$/.test(v),
+        message: 'customerEmail имеет некорректный формат',
+      },
     },
     customerPhone: {
       type: String,

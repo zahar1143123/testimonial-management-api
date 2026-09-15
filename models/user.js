@@ -1,5 +1,5 @@
 const mongoose = require('mongoose');
-const bcrypt = require('bcryptjs');
+const bcrypt = require('bcrypt');
 const Counter = require('./counter');
 
 const userSchema = new mongoose.Schema(
@@ -53,7 +53,7 @@ userSchema.pre('save', async function () {
     this.userId = counter ? counter.seq : Date.now();
   }
 
-  if (this.isModified('password') && !this.password.startsWith('$2a$') && !this.password.startsWith('$2b$')) {
+  if (this.isModified('password')) {
     const salt = await bcrypt.genSalt(10);
     this.password = await bcrypt.hash(this.password, salt);
   }

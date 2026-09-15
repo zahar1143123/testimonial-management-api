@@ -2,19 +2,18 @@ const User = require('../models/user');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 
-// Генерация JWT-токена с фолбэком секретного ключа
-const generateToken = (userId, email, role) => {
-  const secret = process.env.JWT_SECRET || 'fallback_secret_key';
-  return jwt.sign(
+// process.env.JWT_SECRET гарантированно задан к этому моменту — app.js
+// падает при старте, если его нет (см. fail-fast проверку в app.js)
+const generateToken = (userId, email, role) =>
+  jwt.sign(
     { userId, email, role },
-    secret,
+    process.env.JWT_SECRET,
     { expiresIn: process.env.JWT_EXPIRY || '7d' }
   );
-};
 
-const register = async (req, res) => {
+const register = async (req, res, next) => {
   try {
-    const { email, password, businessName, role } = req.body;
+    const { email, password, businessName } = req.body;
 
     if (!email || !password || !businessName) {
       return res.status(400).json({
@@ -33,14 +32,12 @@ const register = async (req, res) => {
       });
     }
 
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
-
+    // Пароль хешируется один раз, в User.pre('save') — не дублируем здесь
     const user = await User.create({
       email: email.toLowerCase(),
-      password: hashedPassword,
+      password,
       businessName,
-      role: role || 'owner'
+      role: 'owner'
     });
 
     const token = generateToken(user.userId, user.email, user.role);
@@ -63,16 +60,11 @@ const register = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Register error:', error.message);
-    return res.status(500).json({
-      code: 500,
-      status: 'failure',
-      message: error.message || 'Ошибка сервера при регистрации'
-    });
+    return next(error);
   }
 };
 
-const login = async (req, res) => {
+const login = async (req, res, next) => {
   try {
     const { email, password } = req.body;
 
@@ -102,6 +94,14 @@ const login = async (req, res) => {
       });
     }
 
+    if (!user.isActive) {
+      return res.status(403).json({
+        code: 403,
+        status: 'failure',
+        message: 'Учётная запись деактивирована'
+      });
+    }
+
     const token = generateToken(user.userId, user.email, user.role);
 
     return res.status(200).json({
@@ -120,12 +120,7 @@ const login = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Login error:', error.message);
-    return res.status(500).json({
-      code: 500,
-      status: 'failure',
-      message: error.message || 'Ошибка сервера при входе'
-    });
+    return next(error);
   }
 };
 

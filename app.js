@@ -7,6 +7,12 @@ const errorHandler = require('./middleware/errorHandler');
 
 const app = express();
 
+// Fail-fast: без JWT_SECRET приложение подписывало бы токены общеизвестным
+// значением по умолчанию — это критичная security-дыра, лучше не запускаться вовсе
+if (!process.env.JWT_SECRET) {
+  throw new Error('JWT_SECRET is required (set it in your .env file)');
+}
+
 // Подключаемся к реальной БД только если мы НЕ в режиме тестов
 if (process.env.NODE_ENV !== 'test') {
   connectDB();
