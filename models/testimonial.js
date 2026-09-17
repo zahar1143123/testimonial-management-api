@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const { v4: uuidv4 } = require('uuid');
+const { ALLOWED_SHARE_CHANNELS } = require('../lib/constants');
 
 const TESTIMONIAL_STATUSES = [
   'draft',
@@ -8,8 +9,6 @@ const TESTIMONIAL_STATUSES = [
   'completed',
   'shared',
 ];
-
-const ALLOWED_CHANNELS = ['email', 'sms', 'facebook', 'instagram'];
 
 const testimonialSchema = new mongoose.Schema(
   {
@@ -79,7 +78,7 @@ const testimonialSchema = new mongoose.Schema(
     },
     sharedChannels: {
       type: [String],
-      enum: ALLOWED_CHANNELS,
+      enum: ALLOWED_SHARE_CHANNELS,
       default: [],
     },
     isDeleted: {
@@ -102,5 +101,5 @@ testimonialSchema.index({ userId: 1, isDeleted: 1 });
 module.exports = {
   Testimonial: mongoose.model('Testimonial', testimonialSchema),
   TESTIMONIAL_STATUSES,
-  ALLOWED_CHANNELS,
+  ALLOWED_CHANNELS: ALLOWED_SHARE_CHANNELS,
 };

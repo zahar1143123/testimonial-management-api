@@ -38,7 +38,7 @@ REST API для сбора и управления пользовательск�
 
 ```bash
 git clone https://github.com/zahar1143123/testimonial-management-api.git
-cd testimonial-api
+cd testimonial-management-api
 npm install
 ```
 
@@ -156,3 +156,11 @@ PATCH /api/testimonials/<testimonialId>/status
 - **Whitelisting полей на create/update** — клиент не может напрямую выставить `status`, `isDeleted`, `sharedChannels` через обычные `POST`/`PUT`, этим управляют отдельные эндпоинты (`/status`, `/share`, `DELETE`), чтобы нельзя было обойти state machine
 - **Мягкое удаление** — все выборки фильтруют `isDeleted: false`
 - **Owner-only доступ** — каждый эндпоинт с `:testimonialId` сверяет `testimonial.userId` с `userId` из токена, при несовпадении — 403
+
+---
+
+## О сдаче задания
+
+- **Затраченное время:** 13 часов
+- **Выполненные бонусы:** rate limiting, поиск (`/search`), базовые тесты (auth, CRUD, state machine)
+- **Что было бы сделано иначе при наличии большего времени:** расширить набор тестов (негативные сценарии на все эндпоинты, owner/security-тесты), вынести `testimonialController.js` на несколько контроллеров/сервис-слой, добавить массовое обновление статуса и экспорт в CSV

@@ -7,12 +7,16 @@ const {
   updateTestimonial,
   updateStatus,
   deleteTestimonial,
-  shareTestimonial,
+  shareTestimonial
+} = require('../controllers/testimonialController');
+const {
   getSettings,
-  upsertSettings,
+  upsertSettings
+} = require('../controllers/testimonialSettingsController');
+const {
   getAnalytics,
   searchTestimonials
-} = require('../controllers/testimonialController');
+} = require('../controllers/testimonialAnalyticsController');
 const { protect } = require('../middleware/auth');
 
 router.use(protect);
@@ -21,6 +25,8 @@ router.route('/')
   .post(createTestimonial)
   .get(getTestimonials);
 
+// Статичные пути должны идти ДО '/:testimonialId', иначе Express
+// примет 'settings' / 'analytics' / 'search' за значение :testimonialId
 router.route('/settings')
   .get(getSettings)
   .post(upsertSettings);
