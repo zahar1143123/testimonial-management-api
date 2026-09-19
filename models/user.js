@@ -50,7 +50,12 @@ userSchema.pre('save', async function () {
       { $inc: { seq: 1 } },
       { returnDocument: 'after', upsert: true }
     );
-    this.userId = counter ? counter.seq : Date.now();
+
+    if (!counter) {
+      throw new Error('Failed to generate userId: Counter document was not returned');
+    }
+
+    this.userId = counter.seq;
   }
 
   if (this.isModified('password')) {

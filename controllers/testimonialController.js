@@ -76,7 +76,7 @@ const getTestimonials = async (req, res, next) => {
         total,
         page: pageNum,
         limit: limitNum,
-        pages: Math.ceil(total / limitNum) || 1
+        pages: Math.ceil(total / limitNum)
       }
     });
   } catch (error) {
@@ -152,17 +152,16 @@ const updateTestimonial = async (req, res, next) => {
       });
     }
 
-    const updated = await Testimonial.findOneAndUpdate(
-      { testimonialId: req.params.testimonialId },
-      { $set: fieldsToUpdate },
-      { returnDocument: 'after', runValidators: true }
-    );
+    // Мутируем уже полученный документ и сохраняем его же, а не запускаем
+    // вторую отдельную findOneAndUpdate-операцию по тому же testimonialId.
+    Object.assign(testimonial, fieldsToUpdate);
+    await testimonial.save();
 
     return res.status(200).json({
       code: 200,
       status: 'success',
       message: 'Отзыв успешно обновлен',
-      data: updated
+      data: testimonial
     });
   } catch (error) {
     return next(error);
@@ -215,18 +214,35 @@ const updateStatus = async (req, res, next) => {
       });
     }
 
-    testimonial.status = nextStatus;
+    const update = { status: nextStatus };
     if (nextStatus === 'shared') {
-      testimonial.sharedAt = new Date();
+      update.sharedAt = new Date();
     }
+    
+    const updated = await Testimonial.findOneAndUpdate(
+      {
+        testimonialId: req.params.testimonialId,
+        userId: currentUserId,
+        status: currentStatus,
+        isDeleted: false
+      },
+      { $set: update },
+      { returnDocument: 'after' }
+    );
 
-    await testimonial.save();
+    if (!updated) {
+      return res.status(409).json({
+        code: 409,
+        status: 'failure',
+        message: 'Статус отзыва уже был изменён параллельным запросом — повторите попытку'
+      });
+    }
 
     return res.status(200).json({
       code: 200,
       status: 'success',
       message: 'Статус отзыва успешно обновлен',
-      data: testimonial
+      data: updated
     });
   } catch (error) {
     return next(error);

@@ -81,6 +81,26 @@ const parseDateParam = (value, { endOfDay = false } = {}) => {
 
 const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
+// Валидация minRating/maxRating для поиска. Оба опциональны, но если заданы —
+// должны быть числами 1-5 (та же граница, что и в схеме Testimonial.rating),
+// и min не может быть больше max.
+const parseRatingRange = (minRating, maxRating) => {
+  const min = minRating !== undefined ? Number(minRating) : undefined;
+  const max = maxRating !== undefined ? Number(maxRating) : undefined;
+
+  if (min !== undefined && (!Number.isFinite(min) || min < 1 || min > 5)) {
+    return { error: 'minRating должен быть числом от 1 до 5' };
+  }
+  if (max !== undefined && (!Number.isFinite(max) || max < 1 || max > 5)) {
+    return { error: 'maxRating должен быть числом от 1 до 5' };
+  }
+  if (min !== undefined && max !== undefined && min > max) {
+    return { error: 'minRating не может быть больше maxRating' };
+  }
+
+  return { min, max };
+};
+
 // State machine — чистая функция, легко unit-тестируется без БД и без Express:
 // isValidStatusTransition('draft', 'recording') === true
 // isValidStatusTransition('draft', 'draft') === false (same-state запрещён)
@@ -98,6 +118,7 @@ module.exports = {
   parseListQuery,
   parseDateParam,
   escapeRegex,
+  parseRatingRange,
   isValidStatusTransition,
   SORT_FIELDS,
   MAX_LIMIT

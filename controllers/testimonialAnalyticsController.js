@@ -3,7 +3,8 @@ const {
   getUserIdFromReq,
   parseListQuery,
   parseDateParam,
-  escapeRegex
+  escapeRegex,
+  parseRatingRange
 } = require('../services/testimonialService');
 
 const getAnalytics = async (req, res, next) => {
@@ -38,27 +39,24 @@ const getAnalytics = async (req, res, next) => {
       if (end.value) matchStage.createdAt.$lte = end.value;
     }
 
-    const stats = await Testimonial.aggregate([
+    const [result] = await Testimonial.aggregate([
       { $match: matchStage },
       {
-        $group: {
-          _id: '$status',
-          count: { $sum: 1 }
+        $facet: {
+          byStatus: [{ $group: { _id: '$status', count: { $sum: 1 } } }],
+          averageRating: [
+            { $match: { rating: { $exists: true, $ne: null } } },
+            { $group: { _id: null, avg: { $avg: '$rating' } } }
+          ],
+          total: [{ $count: 'count' }]
         }
       }
     ]);
 
-    const total = await Testimonial.countDocuments(matchStage);
-
-    const overallRatingResult = await Testimonial.aggregate([
-      { $match: { ...matchStage, rating: { $exists: true, $ne: null } } },
-      { $group: { _id: null, averageRating: { $avg: '$rating' } } }
-    ]);
-
-    const averageRating =
-      overallRatingResult.length > 0
-        ? Number(overallRatingResult[0].averageRating.toFixed(1))
-        : 0;
+    const total = result.total[0]?.count || 0;
+    const averageRating = result.averageRating[0]
+      ? Number(result.averageRating[0].avg.toFixed(1))
+      : 0;
 
     const byStatus = {
       draft: 0,
@@ -68,7 +66,7 @@ const getAnalytics = async (req, res, next) => {
       shared: 0
     };
 
-    stats.forEach((item) => {
+    result.byStatus.forEach((item) => {
       if (Object.prototype.hasOwnProperty.call(byStatus, item._id)) {
         byStatus[item._id] = item.count;
       }
@@ -132,6 +130,11 @@ const searchTestimonials = async (req, res, next) => {
       });
     }
 
+    const ratingRange = parseRatingRange(minRating, maxRating);
+    if (ratingRange.error) {
+      return res.status(400).json({ code: 400, status: 'failure', message: ratingRange.error });
+    }
+
     const query = {
       userId,
       isDeleted: false
@@ -153,10 +156,10 @@ const searchTestimonials = async (req, res, next) => {
       if (before.value) query.createdAt.$lte = before.value;
     }
 
-    if (minRating || maxRating) {
+    if (ratingRange.min !== undefined || ratingRange.max !== undefined) {
       query.rating = {};
-      if (minRating) query.rating.$gte = Number(minRating);
-      if (maxRating) query.rating.$lte = Number(maxRating);
+      if (ratingRange.min !== undefined) query.rating.$gte = ratingRange.min;
+      if (ratingRange.max !== undefined) query.rating.$lte = ratingRange.max;
     }
 
     const skip = (pageNum - 1) * limitNum;
@@ -176,7 +179,7 @@ const searchTestimonials = async (req, res, next) => {
         total,
         page: pageNum,
         limit: limitNum,
-        pages: Math.ceil(total / limitNum) || 1
+        pages: Math.ceil(total / limitNum)
       }
     });
   } catch (error) {

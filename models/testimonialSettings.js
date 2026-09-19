@@ -35,10 +35,6 @@ const testimonialSettingsSchema = new mongoose.Schema(
     },
     sendingOptions: {
       type: [String],
-      enum: {
-        values: ['email', 'sms'],
-        message: '{VALUE} не поддерживается в sendingOptions',
-      },
       default: ['email', 'sms'],
     },
     thankYouMessage: {
