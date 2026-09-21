@@ -69,8 +69,20 @@ const parseListQuery = ({ page = 1, limit = 10, sort = 'createdAt', status }) =>
 const toEndOfDayIfDateOnly = (value) =>
   /^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T23:59:59.999Z` : value;
 
+const DATE_ONLY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
 const parseDateParam = (value, { endOfDay = false } = {}) => {
   if (value === undefined) return { value: undefined };
+
+  // JS Date не проверяет календарную корректность: new Date('2025-02-30')
+  // не даёт Invalid Date, а тихо "перекатывается" на 2025-03-02
+  if (DATE_ONLY_PATTERN.test(value)) {
+    const asDate = new Date(`${value}T00:00:00.000Z`);
+    if (asDate.toISOString().slice(0, 10) !== value) {
+      return { error: `Некорректная календарная дата: ${value}` };
+    }
+  }
+
   const normalized = endOfDay ? toEndOfDayIfDateOnly(value) : value;
   const date = new Date(normalized);
   if (Number.isNaN(date.getTime())) {

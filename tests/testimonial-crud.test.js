@@ -90,6 +90,15 @@ describe('Input Validation', () => {
 
     expect(res.statusCode).toEqual(400);
   });
+
+  it('should reject a whitespace-only customerName (400)', async () => {
+    const res = await request(app)
+      .post('/api/testimonials')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ customerName: '   ' });
+
+    expect(res.statusCode).toEqual(400);
+  });
 });
 
 describe('Ownership checks (403)', () => {

@@ -11,19 +11,38 @@ const generateToken = (userId, email, role) =>
     { expiresIn: process.env.JWT_EXPIRY || '7d' }
   );
 
+const validateCredentials = ({ email, password, businessName }) => {
+  if (typeof email !== 'string' || typeof password !== 'string') {
+    return { error: 'email и password должны быть строками' };
+  }
+  const normalizedEmail = email.trim().toLowerCase();
+  if (!normalizedEmail || !password) {
+    return { error: 'Поля email и password обязательны' };
+  }
+  if (businessName !== undefined) {
+    if (typeof businessName !== 'string' || !businessName.trim()) {
+      return { error: 'businessName должен быть непустой строкой' };
+    }
+  }
+  return { normalizedEmail, businessName: businessName?.trim() };
+};
+
 const register = async (req, res, next) => {
   try {
-    const { email, password, businessName } = req.body;
+    const { password, businessName } = req.body;
+    const validated = validateCredentials({ email: req.body.email, password, businessName });
 
-    if (!email || !password || !businessName) {
+    if (validated.error || !validated.businessName) {
       return res.status(400).json({
         code: 400,
         status: 'failure',
-        message: 'Поля email, password и businessName обязательны'
+        message: validated.error || 'Поля email, password и businessName обязательны'
       });
     }
 
-    const existingUser = await User.findOne({ email: email.toLowerCase() });
+    const { normalizedEmail } = validated;
+
+    const existingUser = await User.findOne({ email: normalizedEmail });
     if (existingUser) {
       return res.status(400).json({
         code: 400,
@@ -34,9 +53,9 @@ const register = async (req, res, next) => {
 
     // Пароль хешируется один раз, в User.pre('save') — не дублируем здесь
     const user = await User.create({
-      email: email.toLowerCase(),
+      email: normalizedEmail,
       password,
-      businessName,
+      businessName: validated.businessName,
       role: 'owner'
     });
 
@@ -66,17 +85,22 @@ const register = async (req, res, next) => {
 
 const login = async (req, res, next) => {
   try {
-    const { email, password } = req.body;
+    const { password } = req.body;
+    const validated = validateCredentials({ email: req.body.email, password });
 
-    if (!email || !password) {
+    if (validated.error) {
       return res.status(400).json({
         code: 400,
         status: 'failure',
-        message: 'Укажите email и password'
+        message: validated.error
       });
     }
 
-    const user = await User.findOne({ email: email.toLowerCase() });
+    const { normalizedEmail } = validated;
+
+    // password по умолчанию скрыт схемой (select: false) — явно запрашиваем
+    // его здесь, единственном месте, где он реально нужен
+    const user = await User.findOne({ email: normalizedEmail }).select('+password');
     if (!user) {
       return res.status(401).json({
         code: 401,

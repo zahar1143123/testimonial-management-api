@@ -127,3 +127,31 @@ describe('Race condition on status transition', () => {
     expect(statusCodes).toEqual([200, 409]);
   });
 });
+
+describe('Concurrent share does not lose channels', () => {
+  it('should keep both channels when two different share requests race', async () => {
+    const shareRaceToken = await registerUser('share-race@example.com');
+    const testimonial = await createTestimonial(shareRaceToken, { customerName: 'Гонка шаринга' });
+
+    for (const status of ['recording', 'processing', 'completed']) {
+      await request(app)
+        .patch(`/api/testimonials/${testimonial.testimonialId}/status`)
+        .set('Authorization', `Bearer ${shareRaceToken}`)
+        .send({ status });
+    }
+
+    const shareWith = (channels) =>
+      request(app)
+        .post(`/api/testimonials/${testimonial.testimonialId}/share`)
+        .set('Authorization', `Bearer ${shareRaceToken}`)
+        .send({ channels });
+
+    await Promise.all([shareWith(['email']), shareWith(['facebook'])]);
+
+    const res = await request(app)
+      .get(`/api/testimonials/${testimonial.testimonialId}`)
+      .set('Authorization', `Bearer ${shareRaceToken}`);
+
+    expect(res.body.data.sharedChannels.sort()).toEqual(['email', 'facebook'].sort());
+  });
+});

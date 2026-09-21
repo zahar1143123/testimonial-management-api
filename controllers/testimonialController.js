@@ -343,26 +343,49 @@ const shareTestimonial = async (req, res, next) => {
       });
     }
 
-    const updatedChannels = Array.from(
-      new Set([...(testimonial.sharedChannels || []), ...channels])
+    // Атомарное обновление через aggregation-pipeline update: объединение
+    // каналов ($setUnion) и условный переход статуса/sharedAt ($cond)
+    // выполняются одной неделимой операцией на стороне MongoDB. При двух
+    // параллельных share-запросах с разными каналами (email vs facebook)
+    // оба набора гарантированно сохранятся — раньше здесь был обычный
+    // findOne -> мутация -> save(), где второй save() мог молча
+    // перезаписать результат первого (та же гонка, что чинили в updateStatus).
+    const updated = await Testimonial.findOneAndUpdate(
+      {
+        testimonialId: req.params.testimonialId,
+        userId: currentUserId,
+        isDeleted: false,
+        status: { $in: ['completed', 'shared'] }
+      },
+      [
+        {
+          $set: {
+            sharedChannels: { $setUnion: ['$sharedChannels', channels] },
+            status: {
+              $cond: [{ $eq: ['$status', 'completed'] }, 'shared', '$status']
+            },
+            sharedAt: {
+              $cond: [{ $eq: ['$sharedAt', null] }, '$$NOW', '$sharedAt']
+            }
+          }
+        }
+      ],
+      { returnDocument: 'after', updatePipeline: true }
     );
-    testimonial.sharedChannels = updatedChannels;
 
-    if (testimonial.status === 'completed') {
-      testimonial.status = 'shared';
+    if (!updated) {
+      return res.status(409).json({
+        code: 409,
+        status: 'failure',
+        message: 'Отзыв изменился между проверкой и сохранением — повторите попытку'
+      });
     }
-
-    if (!testimonial.sharedAt) {
-      testimonial.sharedAt = new Date();
-    }
-
-    await testimonial.save();
 
     return res.status(200).json({
       code: 200,
       status: 'success',
       message: 'Шаринг отзыва успешно записан',
-      data: testimonial
+      data: updated
     });
   } catch (error) {
     return next(error);

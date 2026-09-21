@@ -187,6 +187,13 @@ describe('Search & analytics query validation', () => {
     expect(res.statusCode).toEqual(400);
   });
 
+  it('should reject a calendar-invalid date like 2025-02-30 (400)', async () => {
+    const res = await request(app)
+      .get('/api/testimonials/analytics?startDate=2025-02-30')
+      .set('Authorization', `Bearer ${rangeToken}`);
+    expect(res.statusCode).toEqual(400);
+  });
+
   it('should return 0 pages for an empty search result set', async () => {
     const res = await request(app)
       .get('/api/testimonials/search?q=NoSuchCustomerNameAnywhere')

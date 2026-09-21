@@ -27,6 +27,10 @@ const testimonialSchema = new mongoose.Schema(
       type: String,
       required: [true, 'Customer name is required'],
       trim: true,
+      validate: {
+        validator: (v) => v.trim().length > 0,
+        message: 'Customer name cannot be empty or whitespace only',
+      },
     },
     customerEmail: {
       type: String,
@@ -97,6 +101,14 @@ const testimonialSchema = new mongoose.Schema(
 
 // Составной индекс по ТЗ
 testimonialSchema.index({ userId: 1, isDeleted: 1 });
+
+testimonialSchema.set('toJSON', {
+  transform(doc, ret) {
+    delete ret._id;
+    delete ret.__v;
+    return ret;
+  },
+});
 
 module.exports = {
   Testimonial: mongoose.model('Testimonial', testimonialSchema),
