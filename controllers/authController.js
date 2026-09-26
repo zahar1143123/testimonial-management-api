@@ -29,8 +29,14 @@ const validateCredentials = ({ email, password, businessName }) => {
 
 const register = async (req, res, next) => {
   try {
-    const { password, businessName } = req.body;
-    const validated = validateCredentials({ email: req.body.email, password, businessName });
+    // FIX (ревью, п.2): если тело запроса отсутствует полностью (например,
+    // нет заголовка Content-Type: application/json), express.json() не
+    // трогает req.body, и он остаётся undefined. Деструктуризация
+    // `req.body.password` в этом случае бросает "Cannot destructure
+    // property 'password' of 'undefined'" -> 500 вместо 400.
+    const body = req.body || {};
+    const { password, businessName } = body;
+    const validated = validateCredentials({ email: body.email, password, businessName });
 
     if (validated.error || !validated.businessName) {
       return res.status(400).json({
@@ -85,8 +91,10 @@ const register = async (req, res, next) => {
 
 const login = async (req, res, next) => {
   try {
-    const { password } = req.body;
-    const validated = validateCredentials({ email: req.body.email, password });
+    // FIX (ревью, п.2): та же защита от отсутствующего тела, что и в register.
+    const body = req.body || {};
+    const { password } = body;
+    const validated = validateCredentials({ email: body.email, password });
 
     if (validated.error) {
       return res.status(400).json({

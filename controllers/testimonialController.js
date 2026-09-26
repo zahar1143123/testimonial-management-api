@@ -62,8 +62,11 @@ const getTestimonials = async (req, res, next) => {
     const skip = (pageNum - 1) * limitNum;
 
     const total = await Testimonial.countDocuments(query);
+    // FIX (ревью, п.1): без tie-breaker по _id порядок документов с
+    // одинаковым значением sort-поля не гарантирован между запросами —
+    // обход всех страниц дублирует/пропускает записи.
     const testimonials = await Testimonial.find(query)
-      .sort({ [sort]: -1 })
+      .sort({ [sort]: -1, _id: -1 })
       .skip(skip)
       .limit(limitNum);
 
