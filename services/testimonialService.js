@@ -78,7 +78,13 @@ const parseDateParam = (value, { endOfDay = false } = {}) => {
   // не даёт Invalid Date, а тихо "перекатывается" на 2025-03-02
   if (DATE_ONLY_PATTERN.test(value)) {
     const asDate = new Date(`${value}T00:00:00.000Z`);
-    if (asDate.toISOString().slice(0, 10) !== value) {
+    // FIX (ревью, п.2): для значений вроде "2025-13-01" или "2025-01-00"
+    // asDate — Invalid Date (NaN), и старый код вызывал asDate.toISOString()
+    // без проверки — это бросает неперехваченный RangeError: Invalid time
+    // value, который улетает в 500 вместо 400. День вроде "2025-02-30"
+    // (существующий кейс) не задевает эту ветку — там Date "перекатывается"
+    // на 2025-03-02, а не становится Invalid.
+    if (Number.isNaN(asDate.getTime()) || asDate.toISOString().slice(0, 10) !== value) {
       return { error: `Некорректная календарная дата: ${value}` };
     }
   }

@@ -20,9 +20,29 @@ const getSettings = async (req, res, next) => {
 const upsertSettings = async (req, res, next) => {
   try {
     const userId = Number(getUserIdFromReq(req));
+    const fields = pickSettingsFields(req.body);
+
+    // FIX (ревью, п.6): раньше $set: { ...fields, userId } подставлял
+    // contactConsent целиком объектом, и Mongo заменял вложенный документ
+    // полностью — { enabled: false } стирал ранее сохранённый text. Теперь
+    // при частичном обновлении contactConsent разбираем его на
+    // dot-notation пути, так что $set трогает только те под-поля, которые
+    // реально передал клиент.
+    const { contactConsent, ...rest } = fields;
+    const setPayload = { ...rest, userId };
+
+    if (contactConsent && typeof contactConsent === 'object') {
+      if (contactConsent.enabled !== undefined) {
+        setPayload['contactConsent.enabled'] = contactConsent.enabled;
+      }
+      if (contactConsent.text !== undefined) {
+        setPayload['contactConsent.text'] = contactConsent.text;
+      }
+    }
+
     const settings = await TestimonialSettings.findOneAndUpdate(
       { userId },
-      { $set: { ...pickSettingsFields(req.body), userId } },
+      { $set: setPayload },
       { returnDocument: 'after', upsert: true, runValidators: true }
     );
 
