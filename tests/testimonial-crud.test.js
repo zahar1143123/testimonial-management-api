@@ -236,3 +236,43 @@ describe('Deleted testimonial is fully inaccessible', () => {
     expect(res.statusCode).toEqual(404);
   });
 });
+
+describe('videoUrl format validation', () => {
+  it('should accept an empty videoUrl (video not recorded yet)', async () => {
+    const res = await request(app)
+      .post('/api/testimonials')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ customerName: 'Без видео' });
+
+    expect(res.statusCode).toEqual(201);
+    expect(res.body.data.videoUrl).toEqual('');
+  });
+
+  it('should accept a valid https videoUrl', async () => {
+    const res = await request(app)
+      .post('/api/testimonials')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ customerName: 'С видео', videoUrl: 'https://cdn.example.com/video.mp4' });
+
+    expect(res.statusCode).toEqual(201);
+    expect(res.body.data.videoUrl).toEqual('https://cdn.example.com/video.mp4');
+  });
+
+  it('should reject a videoUrl that is not a valid http(s) URL', async () => {
+    const res = await request(app)
+      .post('/api/testimonials')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ customerName: 'Мусорная ссылка', videoUrl: 'not-a-url' });
+
+    expect(res.statusCode).toEqual(400);
+  });
+
+  it('should reject a javascript: pseudo-URL in videoUrl', async () => {
+    const res = await request(app)
+      .post('/api/testimonials')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ customerName: 'XSS-попытка', videoUrl: 'javascript:alert(1)' });
+
+    expect(res.statusCode).toEqual(400);
+  });
+});

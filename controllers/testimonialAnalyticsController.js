@@ -106,6 +106,17 @@ const searchTestimonials = async (req, res, next) => {
     }
     const { pageNum, limitNum, sort } = parsed;
 
+    // FIX (ревью, п.2): ?q=alice&q=bob заставляет Express распарсить q как
+    // массив. Без этой проверки escapeRegex(q) ниже падает с "str.replace
+    // is not a function" -> 500 вместо 400.
+    if (q !== undefined && typeof q !== 'string') {
+      return res.status(400).json({
+        code: 400,
+        status: 'failure',
+        message: 'q должен быть одной строкой'
+      });
+    }
+
     if (q && q.length > MAX_SEARCH_QUERY_LENGTH) {
       return res.status(400).json({
         code: 400,
@@ -165,8 +176,9 @@ const searchTestimonials = async (req, res, next) => {
     const skip = (pageNum - 1) * limitNum;
 
     const total = await Testimonial.countDocuments(query);
+    // FIX (ревью, п.1): тот же tie-breaker, что и в testimonialController.js
     const testimonials = await Testimonial.find(query)
-      .sort({ [sort]: -1 })
+      .sort({ [sort]: -1, _id: -1 })
       .skip(skip)
       .limit(limitNum);
 

@@ -51,6 +51,12 @@ const testimonialSchema = new mongoose.Schema(
       type: String,
       default: '',
       trim: true,
+      // Раньше сюда можно было записать любую строку — теперь допускаем
+      // либо пустую строку (видео ещё не записано), либо валидный http(s) URL.
+      validate: {
+        validator: (v) => v === '' || /^https?:\/\/\S+$/i.test(v),
+        message: 'videoUrl должен быть пустой строкой или валидным http(s) URL',
+      },
     },
     rating: {
       type: Number,

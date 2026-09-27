@@ -12,7 +12,10 @@ const createTestimonial = async (req, res, next) => {
   try {
     const rawUserId = getUserIdFromReq(req);
 
-    if (!rawUserId) {
+    // FIX: !rawUserId ложно отклонял бы валидный userId === 0 (сейчас
+    // счётчик стартует с 1, так что не всплывает, но это скрытая мина
+    // на будущее). Проверяем явно на undefined/null.
+    if (rawUserId === undefined || rawUserId === null) {
       return res.status(401).json({
         code: 401,
         status: 'failure',
@@ -62,8 +65,11 @@ const getTestimonials = async (req, res, next) => {
     const skip = (pageNum - 1) * limitNum;
 
     const total = await Testimonial.countDocuments(query);
+    // FIX (ревью, п.1): без tie-breaker по _id порядок документов с
+    // одинаковым значением sort-поля не гарантирован между запросами —
+    // обход всех страниц дублирует/пропускает записи.
     const testimonials = await Testimonial.find(query)
-      .sort({ [sort]: -1 })
+      .sort({ [sort]: -1, _id: -1 })
       .skip(skip)
       .limit(limitNum);
 

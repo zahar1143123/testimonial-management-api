@@ -63,3 +63,57 @@ describe('Settings tampering protection', () => {
     expect(res.statusCode).toEqual(400);
   });
 });
+
+describe('Partial contactConsent update (review point 6)', () => {
+  let consentToken;
+
+  beforeAll(async () => {
+    consentToken = await registerUser('contact-consent@example.com');
+  });
+
+  it('should preserve previously saved contactConsent.text when only enabled is updated later', async () => {
+    const firstRes = await request(app)
+      .post('/api/testimonials/settings')
+      .set('Authorization', `Bearer ${consentToken}`)
+      .send({ contactConsent: { enabled: true, text: 'Custom text' } });
+
+    expect(firstRes.statusCode).toEqual(200);
+    expect(firstRes.body.data.contactConsent).toEqual({
+      enabled: true,
+      text: 'Custom text'
+    });
+
+    const secondRes = await request(app)
+      .post('/api/testimonials/settings')
+      .set('Authorization', `Bearer ${consentToken}`)
+      .send({ contactConsent: { enabled: false } });
+
+    expect(secondRes.statusCode).toEqual(200);
+    // Регрессия из фидбека: раньше это стирало ранее сохранённый text,
+    // заменяя весь вложенный объект целиком.
+    expect(secondRes.body.data.contactConsent).toEqual({
+      enabled: false,
+      text: 'Custom text'
+    });
+  });
+
+  it('should update only contactConsent.text without touching enabled', async () => {
+    const textOnlyToken = await registerUser('contact-consent-text-only@example.com');
+
+    await request(app)
+      .post('/api/testimonials/settings')
+      .set('Authorization', `Bearer ${textOnlyToken}`)
+      .send({ contactConsent: { enabled: true, text: 'Original text' } });
+
+    const res = await request(app)
+      .post('/api/testimonials/settings')
+      .set('Authorization', `Bearer ${textOnlyToken}`)
+      .send({ contactConsent: { text: 'Updated text' } });
+
+    expect(res.statusCode).toEqual(200);
+    expect(res.body.data.contactConsent).toEqual({
+      enabled: true,
+      text: 'Updated text'
+    });
+  });
+});

@@ -18,11 +18,12 @@ const {
   searchTestimonials
 } = require('../controllers/testimonialAnalyticsController');
 const { protect } = require('../middleware/auth');
+const { createTestimonialLimiter } = require('../middleware/rateLimiter');
 
 router.use(protect);
 
 router.route('/')
-  .post(createTestimonial)
+  .post(createTestimonialLimiter, createTestimonial)
   .get(getTestimonials);
 
 // Статичные пути должны идти ДО '/:testimonialId', иначе Express
