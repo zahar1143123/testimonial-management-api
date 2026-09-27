@@ -30,7 +30,6 @@ describe('bcrypt 72-byte password boundary (review point 3)', () => {
   });
 
   it('should count multibyte UTF-8 characters by byte length, not character count', async () => {
-    // Каждый '€' - 3 байта в UTF-8, значит 25 символов = 75 байт > 72
     const password = '€'.repeat(25);
 
     const res = await request(app)
@@ -55,6 +54,8 @@ describe('bcrypt 72-byte password boundary (review point 3)', () => {
       .post('/api/auth/login')
       .send({ email, password: longWrong });
 
+    // Пользователь не был создан (регистрация отклонена), так что верный
+    // ответ на попытку логина - "неверный email или пароль", а не 200.
     expect(loginRes.statusCode).not.toEqual(200);
   });
 

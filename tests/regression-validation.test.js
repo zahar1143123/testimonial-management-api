@@ -20,12 +20,16 @@ describe('Malformed / missing request body (review point 2)', () => {
   });
 
   it('should return 400, not 500, for a login request with no body at all', async () => {
+    // Ни .send(), ни Content-Type не выставляем — именно так express.json()
+    // не трогает req.body, и он остаётся undefined (в отличие от пустого
+    // '{}', которое body-parser бы распарсил нормально).
     const res = await request(app).post('/api/auth/login');
 
     expect(res.statusCode).toEqual(400);
   });
 
   it('should return 413 for a JSON body over the Express size limit', async () => {
+    // Express default limit для express.json() - 100kb; берём с запасом
     const oversized = { email: 'a@example.com', password: 'x'.repeat(110 * 1024) };
 
     const res = await request(app)
@@ -65,6 +69,7 @@ describe('Query param validation on protected endpoints (review point 2)', () =>
       .set('Authorization', `Bearer ${token}`);
 
     expect(res.statusCode).toEqual(400);
+    // Не должно быть технических деталей вроде "str.replace is not a function"
     expect(res.body.message).not.toMatch(/replace is not a function/i);
   });
 });
